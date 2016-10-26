@@ -1,6 +1,7 @@
 package org.dsa.iot
 
 import java.net.InetSocketAddress
+import java.text.{ ParseException, SimpleDateFormat }
 
 import _root_.scala.collection.JavaConverters.{ asScalaBufferConverter, seqAsJavaListConverter }
 import _root_.scala.util.{ Failure, Success, Try }
@@ -9,9 +10,11 @@ import _root_.scala.util.control.NonFatal
 import org.apache.kafka.clients.ClientUtils
 import org.apache.kafka.common.KafkaException
 import org.apache.kafka.common.errors.RetriableException
+import org.apache.kafka.common.serialization._
 import org.dsa.iot.dslink.node.Node
 import org.dsa.iot.dslink.node.actions.ActionResult
 import org.dsa.iot.dslink.node.actions.table.Row
+import org.dsa.iot.dslink.node.value.{ Value => DSAValue }
 import org.dsa.iot.kafka10.Settings
 import org.dsa.iot.scala.{ RichNode, stringToValue }
 import org.slf4j.LoggerFactory
@@ -23,6 +26,17 @@ package object kafka10 {
   import Settings._
 
   private val log = LoggerFactory.getLogger(getClass)
+
+  private val timeFormatters = List("yyyy-MM-dd'T'HH:mm:ssz", "yyyy-MM-dd'T'HH:mm:ss",
+    "yyyy-MM-dd'T'HH:mmz", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd") map (p => new SimpleDateFormat(p))
+
+  /* serializers */
+
+  implicit val stringSerializer = new StringSerializer
+  implicit val doubleSerializer = new DoubleSerializer
+  implicit val intSerializer = new IntegerSerializer
+  implicit val longSerializer = new LongSerializer
+  implicit val binarySerializer = new ByteArraySerializer
 
   /* node helpers */
 
@@ -38,6 +52,8 @@ package object kafka10 {
    * Checks if the node type is `connection`.
    */
   def isConnectionNode(node: Node) = getNodeType(node) == Some(CONNECTION)
+
+  /* utility methods */
 
   /**
    * Retries executing some code up to the specified number of times.
@@ -84,4 +100,35 @@ package object kafka10 {
     case e: KafkaException => event.getTable.addRow(Row.make("Kafka error: " + e.getMessage))
     case NonFatal(e)       => event.getTable.addRow(Row.make(e.getMessage))
   }
+
+  /**
+   * Returns Some(str) if the argument is a non-empty string, None otherwise.
+   */
+  def noneIfEmpty(str: String) = Option(str) filter (!_.trim.isEmpty)
+
+  /**
+   * Splits the argument into chunks with the specified delimiter, trims each part and returns only non-empty parts.
+   */
+  def splitAndTrim(delim: String = ",")(str: String) = str.split(delim).map(_.trim).filterNot(_.isEmpty).toList
+
+  /**
+   * Tries to parse a string into a time using one of the available formats.
+   */
+  @throws(classOf[ParseException])
+  def parseTime(str: String) = timeFormatters.foldLeft[Try[java.util.Date]](Failure(null)) { (parsed, fmt) =>
+    parsed match {
+      case yes @ Success(_) => yes
+      case no @ Failure(_)  => Try(fmt.parse(str))
+    }
+  } get
+
+  /**
+   * Parses a value into a java Date instance.
+   */
+  def valueToDate(v: DSAValue) = parseTime(v.getString)
+
+  /**
+   * Parses a value into an enumeration item.
+   */
+  def valueToEnum(e: Enumeration)(v: DSAValue) = e.withName(v.getString)
 }
