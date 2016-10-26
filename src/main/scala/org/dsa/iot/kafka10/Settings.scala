@@ -15,4 +15,6 @@ object Settings {
   val AUX_GROUP_ID = config.getString("auxGroupId")
 
   val ACTION_RETRIES = config.getInt("actionRetries")
+  
+  val PRODUCER_CONFIG = config.getConfig("producer")
 }
