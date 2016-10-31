@@ -25,6 +25,8 @@ import org.slf4j.LoggerFactory
 package object kafka10 {
   import Settings._
 
+  type Binary = Array[Byte]
+
   private val log = LoggerFactory.getLogger(getClass)
 
   private val timeFormatters = List("yyyy-MM-dd'T'HH:mm:ssz", "yyyy-MM-dd'T'HH:mm:ss",
@@ -42,6 +44,7 @@ package object kafka10 {
 
   val NODE_TYPE = "nodeType"
   val CONNECTION = "connection"
+  val TOPIC = "topic"
 
   /**
    * Returns the type of the node.
@@ -52,6 +55,11 @@ package object kafka10 {
    * Checks if the node type is `connection`.
    */
   def isConnectionNode(node: Node) = getNodeType(node) == Some(CONNECTION)
+
+  /**
+   * Checks if the node type is `topic`.
+   */
+  def isTopicNode(node: Node) = getNodeType(node) == Some(TOPIC)
 
   /* utility methods */
 
