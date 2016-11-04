@@ -14,7 +14,7 @@ import org.dsa.iot.dslink.node.value.ValueType.{ BINARY, BOOL, NUMBER, STRING }
 import org.dsa.iot.scala._
 import org.slf4j.LoggerFactory
 
-import Settings.DEFAULT_BROKER_URL
+import Settings.{ CONSUMER_CONFIG, DEFAULT_BROKER_URL }
 
 /**
  * Actions common class.
@@ -65,7 +65,7 @@ abstract class ActionsBase(ctrl: AppController) {
         val partition = getParamOption[Int](event, "partition")
         val timestamp = getParamOption[java.util.Date](event, "timestamp")(valueToDate) map (_.getTime)
         val flush = event.getParam[Boolean]("flush")
-        val options = parseParamAsList(event, "options")
+        val options = parseParamAsMap(event, "options")
 
         val frmd = publisher(partition, timestamp, flush, options, event)
         List(Row.make(status(frmd)))
@@ -87,9 +87,15 @@ abstract class ActionsBase(ctrl: AppController) {
   protected def getRequiredStringParam(event: ActionResult, name: String) = event.getParam[String](name, !_.isEmpty, s"$name cannot be empty").trim
 
   /**
-   * Parses a string parameter into a list of strings, using the supplied separator
+   * Parses a string parameter into a list of strings using the supplied separator.
    */
-  protected def parseParamAsList(event: ActionResult, name: String, entrySep: String = ",", keyValueSet: String = "=") =
+  protected def parseParamAsList(event: ActionResult, name: String, sep: String = ",") =
+    event.getParam[String](name).split(sep).map(_.trim).filterNot(_.isEmpty).toList
+
+  /**
+   * Parses a string parameter into a map of strings, using the supplied separator for entries and key/values.
+   */
+  protected def parseParamAsMap(event: ActionResult, name: String, entrySep: String = ",", keyValueSet: String = "=") =
     event.getParam[String](name).split(entrySep).map(_.trim).filterNot(_.isEmpty) map { str =>
       val parts = str.split(keyValueSet).map(_.trim)
       parts(0) -> parts(1)
@@ -184,7 +190,12 @@ class ConnectionActions(ctrl: AppController) extends ActionsBase(ctrl) {
   lazy val ADD_TOPIC = createAction(
     parameters = STRING("topicName") description "Name of the topic to add",
     handler = event => {
-      val name = event.getParam[String]("topicName", !_.isEmpty, "Name cannot be empty").trim
+      val name = getRequiredStringParam(event, "topicName")
+
+      val parent = getParent(event)
+      if (parent.children.contains(name))
+        throw new IllegalArgumentException(s"Duplicate topic name: $name")
+
       ctrl.addTopicNode(getParent(event))(name)
     })
 
@@ -283,4 +294,56 @@ class TopicActions(ctrl: AppController) extends ActionsBase(ctrl) {
       val topic = getParentMeta[KafkaTopic](event)
       topic.publish(key, value, partition, timestamp, options, flush)
     })
+
+  /**
+   * Subscribes to the topic for receiving messages as strings.
+   */
+  lazy val SUBSCRIBE_STRING = createSubscribeAction(STRING)
+
+  /**
+   * Subscribes to the topic for receiving messages as integers.
+   */
+  lazy val SUBSCRIBE_INT = createSubscribeAction(NUMBER)
+
+  /**
+   * Subscribes to the topic for receiving messages as byte arrays.
+   */
+  lazy val SUBSCRIBE_BINARY = createSubscribeAction(BINARY)
+
+  /**
+   * Creates an action for subscribing to a topic.
+   */
+  protected def createSubscribeAction(dataType: ValueType) = createAction(
+    parameters = List(
+      STRING("groupId") description "Consumer Group Id" default CONSUMER_CONFIG.getString("group.id"),
+      STRING("options") description "Additional options" default ""),
+    handler = event => {
+      val groupId = getRequiredStringParam(event, "groupId")
+      val options = parseParamAsMap(event, "options")
+
+      val parent = getParent(event)
+
+      ctrl.addSubscriptionNode(parent)(groupId, dataType, options)
+    })
+}
+
+/**
+ * Actions for Subscription nodes.
+ */
+class SubscriptionActions(ctrl: AppController) extends ActionsBase(ctrl) {
+
+  /**
+   * Starts streaming from Kafka.
+   */
+  lazy val START: ActionHandler = event => getParentMeta[BasicSubscription[_, _]](event).start
+
+  /**
+   * Stops streaming from Kafka.
+   */
+  lazy val STOP: ActionHandler = event => getParentMeta[BasicSubscription[_, _]](event).stop
+
+  /**
+   * Removes the subscription node.
+   */
+  lazy val REMOVE_SUBSCRIPTION: ActionHandler = getParent _ andThen ctrl.removeSubscriptionNode
 }

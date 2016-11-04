@@ -1,26 +1,24 @@
 package org.dsa.iot.kafka10
 
 import scala.collection.JavaConverters._
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 import org.apache.kafka.clients.producer.{ ProducerConfig, RecordMetadata }
 import org.apache.kafka.common.PartitionInfo
 import org.apache.kafka.common.serialization.{ Serializer, StringDeserializer }
-import org.dsa.iot.scala.Having
 import org.slf4j.LoggerFactory
 
 import com.typesafe.config.ConfigFactory
 
 import cakesolutions.kafka.{ KafkaConsumer, KafkaProducer, KafkaProducerRecord }
 import cakesolutions.kafka.KafkaProducerRecord.Destination
-import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
  * Encapsulates Kafka connection info and operations.
  */
 case class KafkaConnection(name: String, brokerUrl: String) {
   import Settings._
-  import org.apache.kafka.clients.producer.ProducerConfig._
 
   type TopicsWithPartitions = Map[String, List[PartitionInfo]]
 
@@ -29,9 +27,7 @@ case class KafkaConnection(name: String, brokerUrl: String) {
   /**
    * Cleans up the connection artifacts.
    */
-  def close(): Unit = {
-    log.info("KafkaConnection closed")
-  }
+  def close(): Unit = log.info(s"KafkaConnection [$name] closed")
 
   /**
    * List all topics with their partitions.
@@ -93,6 +89,8 @@ case class KafkaConnection(name: String, brokerUrl: String) {
    * Creates a Kafka producer based on the default settings and additional option overrides.
    */
   private def createProducer[K: Serializer, V: Serializer](options: Map[String, String]) = {
+    import org.apache.kafka.clients.producer.ProducerConfig._
+
     val kser = implicitly[Serializer[K]]
     val vser = implicitly[Serializer[V]]
 

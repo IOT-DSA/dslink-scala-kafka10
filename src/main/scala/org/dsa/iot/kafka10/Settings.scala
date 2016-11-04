@@ -17,4 +17,5 @@ object Settings {
   val ACTION_RETRIES = config.getInt("actionRetries")
   
   val PRODUCER_CONFIG = config.getConfig("producer")
+  val CONSUMER_CONFIG = config.getConfig("consumer")
 }

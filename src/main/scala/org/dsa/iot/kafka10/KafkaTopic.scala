@@ -5,11 +5,19 @@ import scala.concurrent.Future
 import org.apache.kafka.clients.producer.RecordMetadata
 import org.apache.kafka.common.PartitionInfo
 import org.apache.kafka.common.serialization.Serializer
+import org.slf4j.LoggerFactory
 
 /**
  * Encapsulates Kafka topic info and operations.
  */
 case class KafkaTopic(name: String, conn: KafkaConnection) {
+
+  private val log = LoggerFactory.getLogger(getClass)
+
+  /**
+   * Cleans up the topic artifacts.
+   */
+  def close(): Unit = log.info(s"KafkaTopic [$name] closed")
 
   /**
    * Returns the list of partitions for this topic.
@@ -33,5 +41,5 @@ case class KafkaTopic(name: String, conn: KafkaConnection) {
                                                     partition: Option[Int] = None, timestamp: Option[Long] = None,
                                                     options: Map[String, String] = Map.empty,
                                                     flush: Boolean = false): Future[RecordMetadata] =
-    conn.publish(name, key, value, partition, timestamp, options, flush)
+    conn.publish[K, V](name, key, value, partition, timestamp, options, flush)
 }
