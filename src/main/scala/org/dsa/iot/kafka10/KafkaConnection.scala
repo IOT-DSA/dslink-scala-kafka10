@@ -1,12 +1,12 @@
 package org.dsa.iot.kafka10
 
 import scala.collection.JavaConverters._
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 import org.apache.kafka.clients.producer.{ ProducerConfig, RecordMetadata }
 import org.apache.kafka.common.PartitionInfo
 import org.apache.kafka.common.serialization.{ Serializer, StringDeserializer }
-import org.dsa.iot.scala.Having
 import org.slf4j.LoggerFactory
 
 import com.typesafe.config.ConfigFactory
@@ -19,34 +19,27 @@ import cakesolutions.kafka.KafkaProducerRecord.Destination
  */
 case class KafkaConnection(name: String, brokerUrl: String) {
   import Settings._
-  import org.apache.kafka.clients.producer.ProducerConfig._
 
   type TopicsWithPartitions = Map[String, List[PartitionInfo]]
 
   private val log = LoggerFactory.getLogger(getClass)
 
-  private lazy val auxConsumer = {
-    val keyDSer = new StringDeserializer
-    val valDSer = new StringDeserializer
-    val conf = KafkaConsumer.Conf(keyDSer, valDSer, brokerUrl, AUX_GROUP_ID)
-    KafkaConsumer(conf)
-  }
-
   /**
    * Cleans up the connection artifacts.
    */
-  def close(): Unit = {
-    auxConsumer.close
-    log.info("Aux consumer closed")
-  }
+  def close(): Unit = log.info(s"KafkaConnection [$name] closed")
 
   /**
    * List all topics with their partitions.
    *
    * @return the topics with associated lists of partition information records.
    */
-  def listTopics: TopicsWithPartitions = auxConsumer.listTopics.asScala.toMap mapValues (_.asScala.toList) having { topics =>
+  def listTopics: TopicsWithPartitions = {
+    val consumer = createAuxConsumer
+    val topics = consumer.listTopics.asScala.toMap mapValues (_.asScala.toList)
     log.info(s"${topics.size} topics fetched for connection [$name]")
+    consumer.close
+    topics
   }
 
   /**
@@ -55,8 +48,12 @@ case class KafkaConnection(name: String, brokerUrl: String) {
    * @param topic the name of the topic to retrieve partitions for.
    * @return the list of partition information records.
    */
-  def partitionsFor(topic: String): List[PartitionInfo] = auxConsumer.partitionsFor(topic).asScala.toList having { parts =>
-    log.info(s"${parts.size} partition(s) fetched for topic [$topic], connection [$name]")
+  def partitionsFor(topic: String): List[PartitionInfo] = {
+    val consumer = createAuxConsumer
+    val partitions = consumer.partitionsFor(topic).asScala.toList
+    log.info(s"${partitions.size} partition(s) fetched for topic [$topic], connection [$name]")
+    consumer.close
+    partitions
   }
 
   /**
@@ -80,10 +77,10 @@ case class KafkaConnection(name: String, brokerUrl: String) {
     val frmd = sendWithProducer(producer)(target)(key, value, timestamp)
     log.info(s"A message published onto [$target] by connection [$name]")
 
-    if (flush) {
+    frmd onComplete (_ => producer.close)
+
+    if (flush)
       producer.flush
-      producer.close
-    }
 
     frmd
   }
@@ -92,6 +89,8 @@ case class KafkaConnection(name: String, brokerUrl: String) {
    * Creates a Kafka producer based on the default settings and additional option overrides.
    */
   private def createProducer[K: Serializer, V: Serializer](options: Map[String, String]) = {
+    import org.apache.kafka.clients.producer.ProducerConfig._
+
     val kser = implicitly[Serializer[K]]
     val vser = implicitly[Serializer[V]]
 
@@ -107,5 +106,15 @@ case class KafkaConnection(name: String, brokerUrl: String) {
     producer: KafkaProducer[K, V])(target: Destination)(key: Option[K], value: V, timestamp: Option[Long]) = {
     val record = KafkaProducerRecord(target, key, value, timestamp)
     producer.send(record)
+  }
+
+  /**
+   * Creates an auxiliary consumer.
+   */
+  private def createAuxConsumer = {
+    val keyDSer = new StringDeserializer
+    val valDSer = new StringDeserializer
+    val conf = KafkaConsumer.Conf(keyDSer, valDSer, brokerUrl, AUX_GROUP_ID)
+    KafkaConsumer(conf)
   }
 }

@@ -25,6 +25,8 @@ import org.slf4j.LoggerFactory
 package object kafka10 {
   import Settings._
 
+  type Binary = Array[Byte]
+
   private val log = LoggerFactory.getLogger(getClass)
 
   private val timeFormatters = List("yyyy-MM-dd'T'HH:mm:ssz", "yyyy-MM-dd'T'HH:mm:ss",
@@ -33,15 +35,19 @@ package object kafka10 {
   /* serializers */
 
   implicit val stringSerializer = new StringSerializer
-  implicit val doubleSerializer = new DoubleSerializer
   implicit val intSerializer = new IntegerSerializer
-  implicit val longSerializer = new LongSerializer
   implicit val binarySerializer = new ByteArraySerializer
+
+  implicit val stringDeserializer = new StringDeserializer
+  implicit val intDeserializer = new IntegerDeserializer
+  implicit val binaryDeserializer = new ByteArrayDeserializer
 
   /* node helpers */
 
   val NODE_TYPE = "nodeType"
   val CONNECTION = "connection"
+  val TOPIC = "topic"
+  val BASIC_SUB = "basicSubcription"
 
   /**
    * Returns the type of the node.
@@ -52,6 +58,16 @@ package object kafka10 {
    * Checks if the node type is `connection`.
    */
   def isConnectionNode(node: Node) = getNodeType(node) == Some(CONNECTION)
+
+  /**
+   * Checks if the node type is `topic`.
+   */
+  def isTopicNode(node: Node) = getNodeType(node) == Some(TOPIC)
+
+  /**
+   * Checks if the node type is `basicSubscription`.
+   */
+  def isBasicSubNode(node: Node) = getNodeType(node) == Some(BASIC_SUB)
 
   /* utility methods */
 
