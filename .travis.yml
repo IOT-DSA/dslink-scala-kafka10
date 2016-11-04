@@ -1,0 +1,20 @@
+language: scala
+
+scala:
+- 2.11.7
+
+jdk:
+- oraclejdk8
+
+notifications:
+  email:
+    recipients:
+    - vlad@uralian.com
+
+install: /bin/true
+
+script: sbt +clean +test
+
+cache:
+  directories:
+  - $HOME/.ivy2
