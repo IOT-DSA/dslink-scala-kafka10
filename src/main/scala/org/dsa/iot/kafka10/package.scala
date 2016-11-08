@@ -48,6 +48,7 @@ package object kafka10 {
   val CONNECTION = "connection"
   val TOPIC = "topic"
   val BASIC_SUB = "basicSubcription"
+  val ADVANCED_SUB = "advancedSubscription"
 
   /**
    * Returns the type of the node.
@@ -68,6 +69,11 @@ package object kafka10 {
    * Checks if the node type is `basicSubscription`.
    */
   def isBasicSubNode(node: Node) = getNodeType(node) == Some(BASIC_SUB)
+
+  /**
+   * Checks if the node type is `advancedSubscription`.
+   */
+  def isAdvancedSubNode(node: Node) = getNodeType(node) == Some(ADVANCED_SUB)
 
   /* utility methods */
 

@@ -10,7 +10,7 @@ import org.apache.kafka.common.PartitionInfo
 import org.dsa.iot.dslink.node.actions.{ ActionResult, Parameter, ResultType }
 import org.dsa.iot.dslink.node.actions.table.Row
 import org.dsa.iot.dslink.node.value.{ Value => DSAValue, ValueType }
-import org.dsa.iot.dslink.node.value.ValueType.{ BINARY, BOOL, NUMBER, STRING }
+import org.dsa.iot.dslink.node.value.ValueType.{ BINARY, BOOL, NUMBER, STRING, MAP }
 import org.dsa.iot.scala._
 import org.slf4j.LoggerFactory
 
@@ -237,6 +237,28 @@ class ConnectionActions(ctrl: AppController) extends ActionsBase(ctrl) {
       val conn = getParentMeta[KafkaConnection](event)
       conn.publish(topicName, key, value, partition, timestamp, options, flush)
     })
+
+  /**
+   * Subscribes to a list of topics/partitions.
+   */
+  lazy val SUBSCRIBE_BINARY = createAction(
+    parameters = List(
+      STRING("name") description "Subscription name, can't be empty",
+      MAP("partitions") description "Map \"topic\":[list of partitions]",
+      STRING("groupId") description "Consumer Group Id" default CONSUMER_CONFIG.getString("group.id"),
+      STRING("options") description "Additional options" default ""),
+    handler = event => {
+      val name = getRequiredStringParam(event, "name")
+      val groupId = getRequiredStringParam(event, "groupId")
+      val options = parseParamAsMap(event, "options")
+      val partitions = event.getParam[Map[String, _]]("partitions") map {
+        case (topic, list: Iterable[_]) => topic -> list.asInstanceOf[Iterable[Int]]
+      }
+
+      val parent = getParent(event)
+
+      ctrl.addAdvancedSubNode(parent)(name, groupId, partitions, options)
+    })
 }
 
 /**
@@ -323,14 +345,14 @@ class TopicActions(ctrl: AppController) extends ActionsBase(ctrl) {
 
       val parent = getParent(event)
 
-      ctrl.addSubscriptionNode(parent)(groupId, dataType, options)
+      ctrl.addBasicSubNode(parent)(groupId, dataType, options)
     })
 }
 
 /**
- * Actions for Subscription nodes.
+ * Actions for Basic Subscription nodes.
  */
-class SubscriptionActions(ctrl: AppController) extends ActionsBase(ctrl) {
+class BasicSubscriptionActions(ctrl: AppController) extends ActionsBase(ctrl) {
 
   /**
    * Starts streaming from Kafka.
@@ -345,5 +367,25 @@ class SubscriptionActions(ctrl: AppController) extends ActionsBase(ctrl) {
   /**
    * Removes the subscription node.
    */
-  lazy val REMOVE_SUBSCRIPTION: ActionHandler = getParent _ andThen ctrl.removeSubscriptionNode
+  lazy val REMOVE_SUBSCRIPTION: ActionHandler = getParent _ andThen ctrl.removeBasicSubNode
+}
+
+/**
+ * Actions for Advanced Subscription nodes.
+ */
+class AdvancedSubscriptionActions(ctrl: AppController) extends ActionsBase(ctrl) {
+  /**
+   * Starts streaming from Kafka.
+   */
+  lazy val START: ActionHandler = event => getParentMeta[AdvancedSubscription[_, _]](event).start
+
+  /**
+   * Stops streaming from Kafka.
+   */
+  lazy val STOP: ActionHandler = event => getParentMeta[AdvancedSubscription[_, _]](event).stop
+
+  /**
+   * Removes the subscription node.
+   */
+  lazy val REMOVE_SUBSCRIPTION: ActionHandler = getParent _ andThen ctrl.removeAdvancedSubNode
 }
