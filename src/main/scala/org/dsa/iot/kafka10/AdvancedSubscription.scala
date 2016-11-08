@@ -24,6 +24,7 @@ class AdvancedSubscription[K: Deserializer, V: Deserializer](
     options: Map[String, String], conn: KafkaConnection) {
 
   import Settings._
+  import OffsetType._
 
   private val log = LoggerFactory.getLogger(getClass)
 
@@ -91,6 +92,31 @@ class AdvancedSubscription[K: Deserializer, V: Deserializer](
     consumer.close
     log.info(s"Subscription [$name] closed")
   }
+
+  /**
+   * Sets the consumer position for the specified partitions.
+   */
+  def seek(partitions: Iterable[TopicPartition], offsetType: OffsetType, offset: Long) = synchronized {
+    val wasStarted = isStarted
+    if (wasStarted)
+      stop
+    val str = if (partitions.isEmpty) "all partitions" else partitions.mkString("[", ",", "]")
+    offsetType match {
+      case Earliest =>
+        consumer.seekToBeginning(partitions.toList.asJava)
+        log.info(s"Subscription [$name] reset to beginning for $str")
+      case Latest =>
+        consumer.seekToEnd(partitions.toList.asJava)
+        log.info(s"Subscription [$name] reset to end for $str")
+      case Custom => 
+        val parts = if (partitions.isEmpty) consumer.assignment.asScala else partitions
+        parts foreach (consumer.seek(_, offset))
+        log.info(s"Subscription [$name] reset to offset $offset for $str")
+    }
+    if (wasStarted)
+      start
+  }
+
   /**
    * Creates a Kafka consumer based on the default settings and additional option overrides.
    */

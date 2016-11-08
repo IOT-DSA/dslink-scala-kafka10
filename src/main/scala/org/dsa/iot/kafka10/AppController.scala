@@ -7,6 +7,14 @@ import org.dsa.iot.scala._
 import org.slf4j.LoggerFactory
 
 /**
+ * Consumer offset type.
+ */
+object OffsetType extends Enumeration {
+  type OffsetType = Value
+  val Earliest, Latest, Custom = Value
+}
+
+/**
  * Application controller.
  */
 class AppController(val connection: DSAConnection) {
@@ -203,6 +211,7 @@ class AppController(val connection: DSAConnection) {
 
     node createChild "startStreaming" display "Start" action START build ()
     node createChild "stopStreaming" display "Stop" action STOP build ()
+    node createChild "seek" display "Seek" action SEEK build ()
     node createChild "removeSubscription" display "Remove" action REMOVE_SUBSCRIPTION build ()
 
     log.info(s"Subscription node [$name] initialized")

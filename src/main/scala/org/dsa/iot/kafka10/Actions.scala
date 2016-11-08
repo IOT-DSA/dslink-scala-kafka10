@@ -1,19 +1,16 @@
 package org.dsa.iot.kafka10
 
 import java.lang.{ Integer => JInt, Long => JLong, Double => JDouble }
-
 import scala.concurrent.Future
 import scala.util.{ Failure, Success }
-
 import org.apache.kafka.clients.producer.RecordMetadata
-import org.apache.kafka.common.PartitionInfo
+import org.apache.kafka.common._
 import org.dsa.iot.dslink.node.actions.{ ActionResult, Parameter, ResultType }
 import org.dsa.iot.dslink.node.actions.table.Row
 import org.dsa.iot.dslink.node.value.{ Value => DSAValue, ValueType }
 import org.dsa.iot.dslink.node.value.ValueType.{ BINARY, BOOL, NUMBER, STRING, MAP }
 import org.dsa.iot.scala._
 import org.slf4j.LoggerFactory
-
 import Settings.{ CONSUMER_CONFIG, DEFAULT_BROKER_URL }
 
 /**
@@ -383,6 +380,29 @@ class AdvancedSubscriptionActions(ctrl: AppController) extends ActionsBase(ctrl)
    * Stops streaming from Kafka.
    */
   lazy val STOP: ActionHandler = event => getParentMeta[AdvancedSubscription[_, _]](event).stop
+
+  /**
+   * Sets the consumer position to a certain offset.
+   */
+  lazy val SEEK = createAction(
+    parameters = List(
+      BOOL("allPartitions") description "Reset position for all partitions" default true,
+      STRING("topic") description "Topic to change position for",
+      NUMBER("partition") description "Partition to change position for" default 0,
+      ENUMS(OffsetType)("offsetType") default OffsetType.Latest,
+      NUMBER("offset") description "Custom offset" default 0),
+    handler = event => {
+      val all = event.getParam[Boolean]("allPartitions")
+      val topic = getParamOption[String](event, "topic")
+      val partition = getParamOption[Int](event, "partition")
+      val offsetType = OffsetType withName event.getParam[String]("offsetType")
+      val customOffset = event.getParam[Number]("offset").longValue
+      
+      val sub = getParentMeta[AdvancedSubscription[_, _]](event)
+      
+      val partitions = if (all) Nil else List(new TopicPartition(topic.orNull, partition.getOrElse(0)))
+      sub.seek(partitions, offsetType, customOffset)
+    })
 
   /**
    * Removes the subscription node.
