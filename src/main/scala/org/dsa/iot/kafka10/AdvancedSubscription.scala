@@ -108,11 +108,24 @@ class AdvancedSubscription[K: Deserializer, V: Deserializer](
       case Latest =>
         consumer.seekToEnd(partitions.toList.asJava)
         log.info(s"Subscription [$name] reset to end for $str")
-      case Custom => 
+      case Custom =>
         val parts = if (partitions.isEmpty) consumer.assignment.asScala else partitions
         parts foreach (consumer.seek(_, offset))
         log.info(s"Subscription [$name] reset to offset $offset for $str")
     }
+    if (wasStarted)
+      start
+  }
+
+  /**
+   * Commits the consumer offsets, synchronously or asynchronously.
+   */
+  def commit(sync: Boolean) = {
+    val wasStarted = isStarted
+    if (wasStarted)
+      stop
+    if (sync) consumer.commitSync else consumer.commitAsync
+    log.info(s"Offsets committed for subscription [$name]")
     if (wasStarted)
       start
   }

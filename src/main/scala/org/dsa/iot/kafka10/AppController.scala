@@ -212,6 +212,7 @@ class AppController(val connection: DSAConnection) {
     node createChild "startStreaming" display "Start" action START build ()
     node createChild "stopStreaming" display "Stop" action STOP build ()
     node createChild "seek" display "Seek" action SEEK build ()
+    node createChild "commitOffsets" display "Commit Offsets" action COMMIT_OFFSETS build ()
     node createChild "removeSubscription" display "Remove" action REMOVE_SUBSCRIPTION build ()
 
     log.info(s"Subscription node [$name] initialized")

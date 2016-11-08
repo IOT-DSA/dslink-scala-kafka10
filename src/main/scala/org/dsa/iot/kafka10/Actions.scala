@@ -12,6 +12,7 @@ import org.dsa.iot.dslink.node.value.ValueType.{ BINARY, BOOL, NUMBER, STRING, M
 import org.dsa.iot.scala._
 import org.slf4j.LoggerFactory
 import Settings.{ CONSUMER_CONFIG, DEFAULT_BROKER_URL }
+import org.apache.kafka.clients.consumer.ConsumerConfig
 
 /**
  * Actions common class.
@@ -243,11 +244,14 @@ class ConnectionActions(ctrl: AppController) extends ActionsBase(ctrl) {
       STRING("name") description "Subscription name, can't be empty",
       MAP("partitions") description "Map \"topic\":[list of partitions]",
       STRING("groupId") description "Consumer Group Id" default CONSUMER_CONFIG.getString("group.id"),
+      BOOL("autoCommit") description "Automatically commit offsets" default true,
       STRING("options") description "Additional options" default ""),
     handler = event => {
       val name = getRequiredStringParam(event, "name")
       val groupId = getRequiredStringParam(event, "groupId")
-      val options = parseParamAsMap(event, "options")
+      val autoCommit = event.getParam[Boolean]("autoCommit")
+      val options = parseParamAsMap(event, "options") +
+        (ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> autoCommit.toString)
       val partitions = event.getParam[Map[String, _]]("partitions") map {
         case (topic, list: Iterable[_]) => topic -> list.asInstanceOf[Iterable[Int]]
       }
@@ -397,12 +401,17 @@ class AdvancedSubscriptionActions(ctrl: AppController) extends ActionsBase(ctrl)
       val partition = getParamOption[Int](event, "partition")
       val offsetType = OffsetType withName event.getParam[String]("offsetType")
       val customOffset = event.getParam[Number]("offset").longValue
-      
+
       val sub = getParentMeta[AdvancedSubscription[_, _]](event)
-      
+
       val partitions = if (all) Nil else List(new TopicPartition(topic.orNull, partition.getOrElse(0)))
       sub.seek(partitions, offsetType, customOffset)
     })
+
+  /**
+   * Commits consumer offsets.
+   */
+  lazy val COMMIT_OFFSETS: ActionHandler = event => getParentMeta[AdvancedSubscription[_, _]](event).commit(true)
 
   /**
    * Removes the subscription node.
