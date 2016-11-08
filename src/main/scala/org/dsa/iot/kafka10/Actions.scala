@@ -1,20 +1,18 @@
 package org.dsa.iot.kafka10
 
 import java.lang.{ Integer => JInt, Long => JLong, Double => JDouble }
-
 import scala.concurrent.Future
 import scala.util.{ Failure, Success }
-
 import org.apache.kafka.clients.producer.RecordMetadata
-import org.apache.kafka.common.PartitionInfo
+import org.apache.kafka.common._
 import org.dsa.iot.dslink.node.actions.{ ActionResult, Parameter, ResultType }
 import org.dsa.iot.dslink.node.actions.table.Row
 import org.dsa.iot.dslink.node.value.{ Value => DSAValue, ValueType }
-import org.dsa.iot.dslink.node.value.ValueType.{ BINARY, BOOL, NUMBER, STRING }
+import org.dsa.iot.dslink.node.value.ValueType.{ BINARY, BOOL, NUMBER, STRING, MAP }
 import org.dsa.iot.scala._
 import org.slf4j.LoggerFactory
-
 import Settings.{ CONSUMER_CONFIG, DEFAULT_BROKER_URL }
+import org.apache.kafka.clients.consumer.ConsumerConfig
 
 /**
  * Actions common class.
@@ -237,6 +235,31 @@ class ConnectionActions(ctrl: AppController) extends ActionsBase(ctrl) {
       val conn = getParentMeta[KafkaConnection](event)
       conn.publish(topicName, key, value, partition, timestamp, options, flush)
     })
+
+  /**
+   * Subscribes to a list of topics/partitions.
+   */
+  lazy val SUBSCRIBE_BINARY = createAction(
+    parameters = List(
+      STRING("name") description "Subscription name, can't be empty",
+      MAP("partitions") description "Map \"topic\":[list of partitions]",
+      STRING("groupId") description "Consumer Group Id" default CONSUMER_CONFIG.getString("group.id"),
+      BOOL("autoCommit") description "Automatically commit offsets" default true,
+      STRING("options") description "Additional options" default ""),
+    handler = event => {
+      val name = getRequiredStringParam(event, "name")
+      val groupId = getRequiredStringParam(event, "groupId")
+      val autoCommit = event.getParam[Boolean]("autoCommit")
+      val options = parseParamAsMap(event, "options") +
+        (ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> autoCommit.toString)
+      val partitions = event.getParam[Map[String, _]]("partitions") map {
+        case (topic, list: Iterable[_]) => topic -> list.asInstanceOf[Iterable[Int]]
+      }
+
+      val parent = getParent(event)
+
+      ctrl.addAdvancedSubNode(parent)(name, groupId, partitions, options)
+    })
 }
 
 /**
@@ -323,14 +346,14 @@ class TopicActions(ctrl: AppController) extends ActionsBase(ctrl) {
 
       val parent = getParent(event)
 
-      ctrl.addSubscriptionNode(parent)(groupId, dataType, options)
+      ctrl.addBasicSubNode(parent)(groupId, dataType, options)
     })
 }
 
 /**
- * Actions for Subscription nodes.
+ * Actions for Basic Subscription nodes.
  */
-class SubscriptionActions(ctrl: AppController) extends ActionsBase(ctrl) {
+class BasicSubscriptionActions(ctrl: AppController) extends ActionsBase(ctrl) {
 
   /**
    * Starts streaming from Kafka.
@@ -345,5 +368,53 @@ class SubscriptionActions(ctrl: AppController) extends ActionsBase(ctrl) {
   /**
    * Removes the subscription node.
    */
-  lazy val REMOVE_SUBSCRIPTION: ActionHandler = getParent _ andThen ctrl.removeSubscriptionNode
+  lazy val REMOVE_SUBSCRIPTION: ActionHandler = getParent _ andThen ctrl.removeBasicSubNode
+}
+
+/**
+ * Actions for Advanced Subscription nodes.
+ */
+class AdvancedSubscriptionActions(ctrl: AppController) extends ActionsBase(ctrl) {
+  /**
+   * Starts streaming from Kafka.
+   */
+  lazy val START: ActionHandler = event => getParentMeta[AdvancedSubscription[_, _]](event).start
+
+  /**
+   * Stops streaming from Kafka.
+   */
+  lazy val STOP: ActionHandler = event => getParentMeta[AdvancedSubscription[_, _]](event).stop
+
+  /**
+   * Sets the consumer position to a certain offset.
+   */
+  lazy val SEEK = createAction(
+    parameters = List(
+      BOOL("allPartitions") description "Reset position for all partitions" default true,
+      STRING("topic") description "Topic to change position for",
+      NUMBER("partition") description "Partition to change position for" default 0,
+      ENUMS(OffsetType)("offsetType") default OffsetType.Latest,
+      NUMBER("offset") description "Custom offset" default 0),
+    handler = event => {
+      val all = event.getParam[Boolean]("allPartitions")
+      val topic = getParamOption[String](event, "topic")
+      val partition = getParamOption[Int](event, "partition")
+      val offsetType = OffsetType withName event.getParam[String]("offsetType")
+      val customOffset = event.getParam[Number]("offset").longValue
+
+      val sub = getParentMeta[AdvancedSubscription[_, _]](event)
+
+      val partitions = if (all) Nil else List(new TopicPartition(topic.orNull, partition.getOrElse(0)))
+      sub.seek(partitions, offsetType, customOffset)
+    })
+
+  /**
+   * Commits consumer offsets.
+   */
+  lazy val COMMIT_OFFSETS: ActionHandler = event => getParentMeta[AdvancedSubscription[_, _]](event).commit(true)
+
+  /**
+   * Removes the subscription node.
+   */
+  lazy val REMOVE_SUBSCRIPTION: ActionHandler = getParent _ andThen ctrl.removeAdvancedSubNode
 }
